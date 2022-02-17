@@ -1,0 +1,60 @@
+---
+title: "Project"
+author: "Ruotong Li"
+date: "2/16/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(psych) 
+library(tidyverse)
+library(gridExtra)
+library(corrplot)
+```
+
+```{r cars}
+data <- read.csv("heart.csv",
+         header = TRUE, stringsAsFactors = TRUE)
+summary(data)
+data$Cholesterol[data$Cholesterol==0] <- NA
+data$RestingBP[data$RestingBP==0] <- NA
+sum(is.na(data$RestingBP))
+sum(is.na(data$Cholesterol))
+```
+
+
+```{r pressure, echo=FALSE}
+par(mfrow=c(1,3))
+hist(data$RestingBP,main='Resting Blood Pressure',breaks=5)
+hist(data$Cholesterol,main='Cholesterol',breaks=5)
+hist(data$MaxHR,main='Maximum Heart Rate',breaks=5)
+```
+```{r}
+Yheart <- filter(data,HeartDisease==1)
+Nheart <- filter(data,HeartDisease==0)
+par(mfrow=c(3,2))
+boxplot(Yheart$RestingBP,main='Resting BP for Heart Disease',horizontal=TRUE,outline=TRUE)
+boxplot(Nheart$RestingBP,main='Resting BP for No Heart Disease',horizontal=TRUE,outline=TRUE)
+boxplot(Yheart$Cholesterol,main='Cholesterol for Heart Disease',horizontal=TRUE,outline=TRUE)
+boxplot(Nheart$Cholesterol,main='Cholesterol for No Heart Disease',horizontal=TRUE,outline=TRUE)
+boxplot(Yheart$MaxHR,main='Maximum Heart Rate for Heart Disease',horizontal=TRUE,outline=TRUE)
+boxplot(Nheart$MaxHR,main='Maximum Heart Rate for No Heart Disease',horizontal=TRUE,outline=TRUE)
+```
+```{r}
+heartdisease <- as.factor(data$HeartDisease)
+plot1 = ggplot(data,aes(x=ChestPainType,fill=heartdisease))+geom_bar(position = 'fill')+facet_wrap(~ST_Slope)+
+  labs(title='Bar plots distinguish Chest Pain type and ST slope with heart disease')
+plot1
+plot2 = ggplot(data,aes(x=RestingECG,fill=heartdisease))+geom_bar(position = 'fill')+facet_wrap(~ExerciseAngina)+
+  labs(title='Bar plots distinguish Resting ECG and Exercise Angina with heart disease')
+plot2
+```
+
+```{r}
+num <- select(data,Age,FastingBS,MaxHR,Oldpeak,HeartDisease)
+correlation <- cor(x=num, use = "complete.obs")
+round(correlation, 3)
+```
+
