@@ -1,0 +1,12 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: Supervised Machine Learning for Heart Disease
+message: Please cite this software using these metadata.
+type: software
+authors:
+  - given-names: Ruotong
+    family-names: Li
+    email: ruotong.li@duke.edu
+    affiliation: Duke University
