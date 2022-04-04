@@ -1,0 +1,97 @@
+---
+title: "Project"
+author: "Ruotong Li"
+date: "2/16/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(psych) 
+library(tidyverse)
+library(gridExtra)
+library(corrplot)
+```
+
+```{r cars}
+data <- read.csv("heart.csv",
+         header = TRUE, stringsAsFactors = TRUE)
+data$FastingBS <- as.factor(data$FastingBS)
+summary(data)
+data$Cholesterol[data$Cholesterol==0] <- NA
+data$RestingBP[data$RestingBP==0] <- NA
+sum(is.na(data$RestingBP))
+sum(is.na(data$Cholesterol))
+```
+
+
+```{r pressure, echo=FALSE}
+par(mfrow=c(1,3))
+hist(data$RestingBP,main='Resting Blood Pressure',breaks=5)
+hist(data$Cholesterol,main='Cholesterol',breaks=5)
+hist(data$MaxHR,main='Maximum Heart Rate',breaks=5)
+```
+```{r}
+Yheart <- filter(data,HeartDisease==1)
+Nheart <- filter(data,HeartDisease==0)
+par(mfrow=c(2,1))
+boxplot(Yheart$RestingBP,main='Resting BP for Heart Disease',horizontal=TRUE,ylim = c(75, 205),outline=TRUE)
+boxplot(Nheart$RestingBP,main='Resting BP for No Heart Disease',horizontal=TRUE,ylim = c(75, 205),outline=TRUE)
+
+par(mfrow=c(2,1))
+boxplot(Yheart$Cholesterol,main='Cholesterol for Heart Disease',horizontal=TRUE,ylim = c(90, 605),outline=TRUE)
+boxplot(Nheart$Cholesterol,main='Cholesterol for No Heart Disease',horizontal=TRUE,ylim = c(90, 605),outline=TRUE)
+
+par(mfrow=c(2,1))
+boxplot(Yheart$MaxHR,main='Maximum Heart Rate for Heart Disease',horizontal=TRUE,ylim = c(55, 200),outline=TRUE)
+boxplot(Nheart$MaxHR,main='Maximum Heart Rate for No Heart Disease',horizontal=TRUE,ylim = c(55, 200),outline=TRUE)
+```
+
+
+```{r}
+heartdisease <- as.factor(data$HeartDisease)
+plot1 = ggplot(data,aes(x=ChestPainType,fill=heartdisease))+geom_bar(position = 'fill')+facet_wrap(~ST_Slope)+
+  labs(title='Bar plots distinguish Chest Pain type and ST slope with heart disease')
+plot1
+plot2 = ggplot(data,aes(x=RestingECG,fill=heartdisease))+geom_bar(position = 'fill')+facet_wrap(~ExerciseAngina)+
+  labs(title='Bar plots distinguish Resting ECG and Exercise Angina with heart disease')
+plot2
+plot3 = ggplot(data,aes(x=FastingBS,fill=heartdisease))+geom_bar(position = 'fill')+
+  labs(title='Bar plots distinguish Fasting Blood Sugar with heart disease')
+plot3
+```
+
+```{r}
+M = mean(data$RestingBP,na.rm=TRUE)
+data$RestingBP[is.na(data$RestingBP)] = M
+```
+
+```{r}
+library('mice')
+imputedE=mice(data,method = 'pmm', maxit = 20)
+```
+
+```{r}
+summary(data$Cholesterol)
+```
+
+```{r}
+imputedE$imp$Cholesterol
+```
+```{r}
+mean(imputedE$imp$Cholesterol$`1`)
+mean(imputedE$imp$Cholesterol$`2`)
+mean(imputedE$imp$Cholesterol$`3`)
+mean(imputedE$imp$Cholesterol$`4`)
+mean(imputedE$imp$Cholesterol$`5`)
+
+df = complete(imputedE,1)
+summary(df)
+```
+
+```{r}
+df[c(1, 4, 5, 8, 10, 12)] <- scale(df[c(1, 4, 5, 8, 10, 12)])
+summary(df)
+```
+
