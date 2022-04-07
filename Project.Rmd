@@ -1,0 +1,262 @@
+---
+title: "Project"
+author: "Ruotong Li, Nan Hu, Jia Deng"
+date: "2/16/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(psych) 
+library(tidyverse)
+library(gridExtra)
+library(corrplot)
+library(mice)
+library(ISLR)
+library(leaps)
+library(caret)
+library(ROCR)
+library(glmnet)
+library(Boruta)
+library(randomForest)
+library(naivebayes)
+library(MASS)
+```
+
+#Data Preprocessing and Visualization
+```{r}
+data <- read.csv("heart.csv",
+         header = TRUE, stringsAsFactors = TRUE)
+data$FastingBS <- as.factor(data$FastingBS)
+heartdisease <- as.factor(data$HeartDisease)
+summary(data)
+data$Cholesterol[data$Cholesterol==0] <- NA
+data$RestingBP[data$RestingBP==0] <- NA
+sum(is.na(data$RestingBP))
+sum(is.na(data$Cholesterol))
+```
+
+
+```{r}
+# Looking at numerical data
+par(mfrow=c(1,3))
+hist(data$RestingBP,main='Resting Blood Pressure',breaks=5)
+hist(data$Cholesterol,main='Cholesterol',breaks=5)
+hist(data$MaxHR,main='Maximum Heart Rate',breaks=5)
+```
+```{r}
+Yheart <- filter(data,HeartDisease==1)
+Nheart <- filter(data,HeartDisease==0)
+par(mfrow=c(2,1))
+boxplot(Yheart$Age,main='Age for Heart Disease',horizontal=TRUE,ylim = c(25, 80),outline=TRUE)
+boxplot(Nheart$Age,main='Age for No Heart Disease',horizontal=TRUE,ylim = c(25, 80),outline=TRUE)
+
+par(mfrow=c(2,1))
+boxplot(Yheart$RestingBP,main='Resting BP for Heart Disease',horizontal=TRUE,ylim = c(75, 205),outline=TRUE)
+boxplot(Nheart$RestingBP,main='Resting BP for No Heart Disease',horizontal=TRUE,ylim = c(75, 205),outline=TRUE)
+
+par(mfrow=c(2,1))
+boxplot(Yheart$Cholesterol,main='Cholesterol for Heart Disease',horizontal=TRUE,ylim = c(90, 605),outline=TRUE)
+boxplot(Nheart$Cholesterol,main='Cholesterol for No Heart Disease',horizontal=TRUE,ylim = c(90, 605),outline=TRUE)
+
+par(mfrow=c(2,1))
+boxplot(Yheart$MaxHR,main='Maximum Heart Rate for Heart Disease',horizontal=TRUE,ylim = c(55, 200),outline=TRUE)
+boxplot(Nheart$MaxHR,main='Maximum Heart Rate for No Heart Disease',horizontal=TRUE,ylim = c(55, 200),outline=TRUE)
+
+par(mfrow=c(2,1))
+boxplot(Yheart$Oldpeak,main='Oldpeak for Heart Disease',horizontal=TRUE,ylim = c(-3, 7),outline=TRUE)
+boxplot(Nheart$Oldpeak,main='Oldpeak for No Heart Disease',horizontal=TRUE,ylim = c(-3, 7),outline=TRUE)
+```
+
+
+```{r}
+# Looking at categorical data
+plot1 = ggplot(data,aes(x=ChestPainType,fill=heartdisease))+geom_bar(position = 'fill')+facet_wrap(~ST_Slope)+
+  labs(title='Bar plots distinguish Chest Pain type and ST slope with heart disease')
+plot1
+plot2 = ggplot(data,aes(x=RestingECG,fill=heartdisease))+geom_bar(position = 'fill')+facet_wrap(~ExerciseAngina)+
+  labs(title='Bar plots distinguish Resting ECG and Exercise Angina with heart disease')
+plot2
+plot3 = ggplot(data,aes(x=FastingBS,fill=heartdisease))+geom_bar(position = 'fill')+facet_wrap(~Sex)+
+  labs(title='Bar plots distinguish Fasting Blood Sugar with heart disease')
+plot3
+```
+
+```{r}
+#Single imputation for RestingBP
+M = mean(data$RestingBP,na.rm=TRUE)
+data$RestingBP[is.na(data$RestingBP)] = M
+```
+
+
+```{r}
+#Multiple imputation for Cholesterol
+imputedE=mice(data,method = 'pmm', maxit = 20)
+summary(data$Cholesterol)
+```
+
+
+```{r}
+imputedE$imp$Cholesterol
+```
+```{r}
+# See which imputation has the closest mean to the orginal data
+m1 = abs(mean(imputedE$imp$Cholesterol$`1`)-244.6)
+m2 = abs(mean(imputedE$imp$Cholesterol$`2`)-244.6)
+m3 = abs(mean(imputedE$imp$Cholesterol$`3`)-244.6)
+m4 = abs(mean(imputedE$imp$Cholesterol$`4`)-244.6)
+m5 = abs(mean(imputedE$imp$Cholesterol$`5`)-244.6)
+M = which.min(c(m1,m2,m3,m4,m5))
+
+df = complete(imputedE,M) # number here should be the one with the closest mean to 244.6
+summary(df)
+```
+
+```{r}
+# Scale the numerical data
+df[c(1, 4, 5, 8, 10)] <- scale(df[c(1, 4, 5, 8, 10)])
+summary(df)
+head(df,5)
+```
+```{r}
+# Split the data into training and testing
+idx = sample(nrow(df), nrow(df)*0.7)
+train = as.data.frame((df[idx,]))
+test = as.data.frame(df[-idx,])
+nrow(train)
+nrow(test)
+```
+
+#Subset selection based on exhaustive search in logistic regression
+```{r}
+regfit.full = regsubsets(HeartDisease~., train,nvmax = 15)
+reg.summary = summary(regfit.full)
+names(reg.summary)
+reg.summary
+```
+
+#RSQ and RSS
+```{r}
+plot(reg.summary$rsq, xlab = 'Number of variables', ylab = 'R Square', type = 'l')
+plot(reg.summary$rss, xlab = 'Number of variables', ylab = 'RSS', type = 'l')
+```
+
+#Use the 15 best models on the test data to find the best one by calculating adjusted r2
+```{r}
+regfit.best = regsubsets(HeartDisease~., train, nvmax = 15)
+test.mat = model.matrix(HeartDisease~., test)
+adjustedr2 = rep(NA,15)
+for(i in 1:15){
+  coefi = coef(regfit.best, id=i)
+  pred = test.mat[,names(coefi)]%*% coefi
+  adjustedr2[i] = 1-(sum((test$HeartDisease - pred)^2)/(nrow(test)-i-1))/(sum((test$HeartDisease - mean(test$HeartDisease))^2)/(nrow(test)-1))
+}
+plot(adjustedr2)
+```
+
+#Model testing and evaluation function,evaluate based on accuracy,confusion matrix, and ROC curve.
+```{r}
+#for a classification problem, the dependent variable should be factor
+train$HeartDisease = as.factor(train$HeartDisease)
+test$HeartDisease = as.factor(test$HeartDisease)
+# evaluate function
+evaluate = function(model,testset,label){
+  #confusion matrix,use threshold to filter prediction values
+  predicted = predict(model, testset,type="response")
+  predicted_thresh =  ifelse((predicted)>0.5,"1","0") %>% as.factor()
+  print(confusionMatrix(label,predicted_thresh))
+  #Roc curve
+  pred = prediction(predicted, label)
+  perf = performance(pred, "acc")
+  roc = performance(pred,"tpr","fpr")
+  plot(roc, colorize = T, lwd = 2)
+}
+```
+
+# train logistic regression model with picked variables (11) here, test and evaluate the model
+```{r}
+logit <- glm(HeartDisease ~.-RestingBP - Cholesterol - RestingECG, data = train, family = "binomial")
+evaluate(logit,test,test$HeartDisease)
+```
+
+```{r}
+logit
+```
+```{r}
+logit_ori <- glm(HeartDisease ~., data = train, family = "binomial")
+evaluate(logit_ori,test,test$HeartDisease)
+logit_ori
+```
+
+#Use lasso for feature selection comparing to best subset in logistic regression 
+```{r}
+# Dumy code categorical predictor variables
+x <- model.matrix(HeartDisease~., train)
+y = as.factor(train$HeartDisease)
+cv.lasso <- cv.glmnet(x, y, alpha = 1, family = "binomial")
+Coe = coef(cv.lasso, s='lambda.min')
+Coe
+# Fit the final model on the training data
+model_lasso <- glmnet(x, y, alpha = 1,lambda=cv.lasso$lambda.min, family = 'binomial')
+# Make predictions on the test data
+x.test <- model.matrix(HeartDisease ~., test)
+label = as.factor(test$HeartDisease)
+# Make predictions
+probabilities <- predict(model_lasso, x.test, type = "response") %>% as.vector()
+predicted.classes <- ifelse(probabilities > 0.5, "1", "0")
+# Model accuracy
+observed.classes <- label
+mean(predicted.classes == observed.classes)
+```
+
+#Random forest variable selection
+```{r}
+boruta <- Boruta(HeartDisease ~ ., data = df, doTrace = 1, maxRuns = 500)
+plot(boruta, las = 2, cex.axis = 0.7)
+```
+
+#train a random forest model and evaluate it
+```{r}
+rf = randomForest(HeartDisease ~ ., data = train, importance = TRUE, proximity = TRUE)
+plot(rf)
+print(rf)
+```
+
+#Generate best mtry value for model
+```{r}
+tuner = tuneRF(train[,-ncol(train)], train$HeartDisease,
+               stepFactor = .8,
+               plot=T,
+               ntreeTry = 500,
+               improve = 0.01)
+```
+```{r}
+optRf = randomForest(HeartDisease~., data = train, mtry = 2, ntree = 500)
+varImpPlot(optRf,
+           sort = T,
+           n.var=11,
+           main = 'Top Variables')
+p = predict(optRf, test)
+confusionMatrix(p, test$HeartDisease)
+```
+```{r}
+lapply(train[,-ncol(train)], function(x) chisq.test(train[,ncol(train)], x))
+```
+#Bayes
+```{r}
+bayes = naive_bayes(HeartDisease ~ .-RestingBP - Cholesterol - RestingECG, data = train)
+p = predict(bayes, test)
+confusionMatrix(p, test$HeartDisease)
+```
+#LDA
+```{r}
+lda = lda(HeartDisease~.,train)
+lda
+lda_p_test = predict(lda,test)
+confusionTab = table(predicted = lda_p_test$class, Actual = test$HeartDisease)
+confusionTab
+acc = (confusionTab[1,1]+confusionTab[2,2])/sum(confusionTab)
+print(acc)
+```
+
